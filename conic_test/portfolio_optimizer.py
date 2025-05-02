@@ -251,13 +251,8 @@ def generate_sparse_mvo_data(n_assets=2000, n_sectors=20, avg_sector_size=100, s
         sector_cov_blocks.append(sector_cov)
 
     print("Assembling block-diagonal covariance matrix...")
-    # Create the block diagonal matrix
-    # Note: block_diag returns a dense numpy array
+    # Create the block diagonal matrix (dense numpy array)
     cov_matrix_dense = block_diag(*sector_cov_blocks)
-
-    # Optional: Convert to sparse format if needed elsewhere, but Julia might handle dense ok
-    # cov_matrix_sparse = csr_matrix(cov_matrix_dense)
-    # print(f"Covariance matrix sparsity: {cov_matrix_sparse.nnz / (n_assets*n_assets):.4f}")
 
     print("Generating expected returns and costs...")
     # Generate random expected returns (annualized)
@@ -270,7 +265,6 @@ def generate_sparse_mvo_data(n_assets=2000, n_sectors=20, avg_sector_size=100, s
     x0 = np.full(n_assets, 1.0/n_assets, dtype=MyFloat)
 
     print("Synthetic data generation finished.")
-    # Return dense cov matrix as Julia code expects Matrix{MyFloat}
     return cov_matrix_dense, expected_returns, cost, x0, n_assets
 
 
@@ -300,7 +294,6 @@ def run_benchmark(num_resolves=50, lookback=252, use_synthetic_data=False, n_ass
             n_assets=n_assets_synth, n_sectors=n_sectors_synth
         )
         # For synthetic data, we need a sequence of returns for the resolve loop
-        # Let's just generate random returns for the benchmark steps
         print(f"Generating {num_resolves} sets of random returns for benchmark loop...")
         resolve_mus = [ (np.random.randn(n_assets) * 0.15 + 0.05).astype(MyFloat) for _ in range(num_resolves) ]
 
@@ -311,15 +304,14 @@ def run_benchmark(num_resolves=50, lookback=252, use_synthetic_data=False, n_ass
             print("Failed to load or process data. Exiting benchmark.")
             return
 
-        # Check if enough data points exist AFTER calculating returns and dropping NaNs
         if len(all_returns) < lookback:
              print(f"Error: Not enough historical return data points for initial calculation. Need {lookback}, have {len(all_returns)}.")
              return
 
-        n_assets = len(tickers) # Define n_assets for this branch
-        cost = np.full(n_assets, 0.0005, dtype=MyFloat) # Define cost
+        n_assets = len(tickers)                               
+        cost = np.full(n_assets, 0.0005, dtype=MyFloat)
         initial_asset_weight = 1.0 / n_assets
-        x0 = np.full(n_assets, initial_asset_weight, dtype=MyFloat) # Define x0
+        x0 = np.full(n_assets, initial_asset_weight, dtype=MyFloat)
 
         # Adjust num_resolves if not enough data
         available_resolves = len(all_returns) - lookback
@@ -327,20 +319,13 @@ def run_benchmark(num_resolves=50, lookback=252, use_synthetic_data=False, n_ass
             print(f"Warning: Not enough historical return data points for all resolves. Need {lookback + num_resolves}, have {len(all_returns)}. Will run {available_resolves} resolves.")
             num_resolves = available_resolves # Adjust number of resolves
 
-        # Prepare resolve_mus sequence INSIDE the else block
         print(f"Preparing {num_resolves} expected return vectors for benchmark loop...")
         for i in range(num_resolves):
             # The window for mu ends at index: lookback + i (relative to start of all_returns)
             window_end_idx = lookback + i
-            window_start_idx = window_end_idx - lookback # Inclusive start index is lookback steps before end index
+            window_start_idx = window_end_idx - lookback
 
-            # Use .iloc for integer-based indexing. Window is [start, end] inclusive.
-            # Ensure indices are correct: iloc is [start:end], end is exclusive
             current_returns = all_returns.iloc[window_start_idx : window_end_idx + 1]
-
-            if len(current_returns) < lookback:
-                 # This check might be redundant given the check above, but good for safety
-                 print(f"Warning: Step {i+1} used only {len(current_returns)} days for mean calculation.")
 
             resolve_mus.append(current_returns.mean().values * 252)
 
